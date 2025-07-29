@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Plus, MoreVertical, Trash2, Edit, Loader2, CheckCircle, XCircle, Upload } from 'lucide-react';
+import { Plus, MoreVertical, Trash2, Edit, Loader2, CheckCircle, XCircle, Upload, Brain, Eye } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
@@ -9,13 +9,16 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import AddSourcesDialog from './AddSourcesDialog';
 import RenameSourceDialog from './RenameSourceDialog';
 import SourceContentViewer from '@/components/chat/SourceContentViewer';
+import EditableTitle from './EditableTitle';
 import { useSources } from '@/hooks/useSources';
 import { useSourceDelete } from '@/hooks/useSourceDelete';
+import { useIntelligentAnalysis } from '@/hooks/useIntelligentAnalysis';
 import { Citation } from '@/types/message';
 
 interface SourcesSidebarProps {
   hasSource: boolean;
   notebookId?: string;
+  notebookTitle?: string;
   selectedCitation?: Citation | null;
   onCitationClose?: () => void;
   setSelectedCitation?: (citation: Citation | null) => void;
@@ -24,6 +27,7 @@ interface SourcesSidebarProps {
 const SourcesSidebar = ({
   hasSource,
   notebookId,
+  notebookTitle,
   selectedCitation,
   onCitationClose,
   setSelectedCitation
@@ -43,6 +47,13 @@ const SourcesSidebar = ({
     deleteSource,
     isDeleting
   } = useSourceDelete();
+
+  const {
+    startAnalysis,
+    getNotebookStatus,
+    isAnalyzing,
+    error: analysisError
+  } = useIntelligentAnalysis();
 
   // Get the source content for the selected citation
   const getSourceContent = (citation: Citation) => {
@@ -220,6 +231,7 @@ const SourcesSidebar = ({
           sourceUrl={sourceUrl}
           className="flex-1 overflow-hidden" 
           isOpenedFromSourceList={selectedCitation.citation_id === -1}
+          onBackToSources={handleBackToSources}
         />
       </div>
     );
@@ -228,14 +240,20 @@ const SourcesSidebar = ({
   return (
     <div className="w-full bg-gray-50 border-r border-gray-200 flex flex-col h-full overflow-hidden">
       <div className="p-4 border-b border-gray-200 flex-shrink-0">
+        {/* Título editável do dossiê */}
+        <EditableTitle 
+          title={notebookTitle || 'Dossiê Sem Título'} 
+          notebookId={notebookId} 
+        />
+        
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-medium text-gray-900">Sources</h2>
+          <h2 className="text-lg font-medium text-gray-900">Documentos do Dossiê</h2>
         </div>
         
         <div className="flex space-x-2">
           <Button variant="outline" size="sm" className="flex-1" onClick={() => setShowAddSourcesDialog(true)}>
             <Plus className="h-4 w-4 mr-2" />
-            Add
+            Adicionar
           </Button>
         </div>
       </div>
@@ -251,7 +269,7 @@ const SourcesSidebar = ({
               {sources.map((source) => (
                 <ContextMenu key={source.id}>
                   <ContextMenuTrigger>
-                    <Card className="p-3 border border-gray-200 cursor-pointer hover:bg-gray-50" onClick={() => handleSourceClick(source)}>
+                    <Card className="p-3 border border-gray-200 cursor-pointer hover:bg-gray-50 group" onClick={() => handleSourceClick(source)}>
                       <div className="flex items-start justify-between space-x-3">
                         <div className="flex items-center space-x-2 flex-1 min-w-0">
                           <div className="w-6 h-6 bg-white rounded border border-gray-200 flex items-center justify-center flex-shrink-0 overflow-hidden">
@@ -260,9 +278,24 @@ const SourcesSidebar = ({
                           <div className="flex-1 min-w-0">
                             <span className="text-sm text-gray-900 truncate block">{source.title}</span>
                           </div>
+                          <div title="Ver detalhes">
+                            <Eye className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </div>
                         </div>
-                        <div className="flex-shrink-0 py-[4px]">
-                          {renderProcessingStatus(source.processing_status)}
+                        <div className="flex items-center space-x-2 flex-shrink-0">
+                          <div className="py-[4px]">
+                            {renderProcessingStatus(source.processing_status)}
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveSource(source);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-100 rounded"
+                            title="Deletar documento"
+                          >
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </button>
                         </div>
                       </div>
                     </Card>
@@ -285,12 +318,66 @@ const SourcesSidebar = ({
               <div className="w-16 h-16 bg-gray-200 rounded-lg mx-auto mb-4 flex items-center justify-center">
                 <span className="text-gray-400 text-2xl">📄</span>
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Saved sources will appear here</h3>
-              <p className="text-sm text-gray-600 mb-4">Click Add source above to add PDFs, text, or audio files.</p>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Seus documentos aparecerão aqui</h3>
+              <p className="text-sm text-gray-600 mb-4">Clique em Adicionar acima para enviar arquivos PDFs.</p>
             </div>
           )}
         </div>
       </ScrollArea>
+
+      {/* Botão de Análise Inteligente */}
+      {notebookId && (
+        <div className="p-4 border-t border-gray-200 flex-shrink-0">
+          {(() => {
+            const status = getNotebookStatus(notebookId);
+            
+            const handleStartAnalysis = async () => {
+              if (!notebookId) return;
+              
+              try {
+                await startAnalysis(notebookId);
+                // Aqui você pode adicionar uma notificação de sucesso se desejar
+                console.log('Análise iniciada com sucesso!');
+              } catch (error) {
+                console.error('Erro ao iniciar análise:', error);
+                // Aqui você pode adicionar uma notificação de erro se desejar
+              }
+            };
+
+            return (
+              <div className="space-y-2">
+                <Button 
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium"
+                  disabled={!status.canAnalyze || isAnalyzing}
+                  onClick={handleStartAnalysis}
+                >
+                  {isAnalyzing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Iniciando Análise...
+                    </>
+                  ) : (
+                    <>
+                      <Brain className="h-4 w-4 mr-2" />
+                      Iniciar Análise Inteligente
+                    </>
+                  )}
+                </Button>
+                
+                <p className="text-xs text-gray-600 text-center">
+                  {status.statusText}
+                </p>
+                
+                {analysisError && (
+                  <p className="text-xs text-red-600 text-center">
+                    Erro: {analysisError}
+                  </p>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       <AddSourcesDialog 
         open={showAddSourcesDialog} 
@@ -308,19 +395,19 @@ const SourcesSidebar = ({
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {selectedSource?.title}?</AlertDialogTitle>
+            <AlertDialogTitle>Deletar {selectedSource?.title}?</AlertDialogTitle>
             <AlertDialogDescription>
-              You're about to delete this source. This cannot be undone.
+              Você está prestes a deletar este documento. Esta ação não pode ser desfeita. O arquivo será removido do armazenamento e da lista de documentos.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction 
               onClick={confirmDelete} 
               className="bg-red-600 hover:bg-red-700" 
               disabled={isDeleting}
             >
-              {isDeleting ? 'Deleting...' : 'Delete'}
+              {isDeleting ? 'Deletando...' : 'Deletar'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

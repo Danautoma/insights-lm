@@ -1,5 +1,5 @@
 
-project_id = ""
+project_id = "crisbuthezpbojcshrwh"
 
 [auth]
 enabled = true
@@ -26,7 +26,6 @@ max_client_conn = 100
 
 [realtime]
 enabled = true
-ip_version = "IPv4"
 
 [studio]
 enabled = true
@@ -45,7 +44,6 @@ file_size_limit = "50MiB"
 
 [edge_runtime]
 enabled = true
-ip_version = "IPv4"
 
 [analytics]
 enabled = false
@@ -56,6 +54,12 @@ verify_jwt = true
 [functions.send-chat-message]
 verify_jwt = true
 
+[functions.chat-handler]
+enabled = true
+verify_jwt = false
+import_map = "./functions/chat-handler/deno.json"
+entrypoint = "./functions/chat-handler/index.ts"
+
 [functions.process-document]
 verify_jwt = true
 
@@ -64,3 +68,47 @@ verify_jwt = false
 
 [functions.process-additional-sources]
 verify_jwt = true
+
+[functions.get-analysis-results]
+enabled = true
+verify_jwt = true
+import_map = "./functions/get-analysis-results/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/get-analysis-results/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/get-analysis-results/*.html" ]
+
+[functions.update-profile]
+enabled = true
+verify_jwt = true
+import_map = "./functions/update-profile/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/update-profile/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/update-profile/*.html" ]
+
+[functions.generate-upload-url]
+enabled = true
+verify_jwt = true
+import_map = "./functions/generate-upload-url/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/generate-upload-url/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/generate-upload-url/*.html" ]
+
+[functions.upload-to-backblaze]
+enabled = true
+verify_jwt = false
+import_map = "./functions/upload-to-backblaze/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/upload-to-backblaze/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/upload-to-backblaze/*.html" ]

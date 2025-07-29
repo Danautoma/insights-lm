@@ -1,5 +1,6 @@
+// /supabase/functions/process-document/index.ts
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
@@ -7,114 +8,69 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const {
+  DOCUMENT_PROCESSING_WEBHOOK_URL,
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY,
+} = Deno.env.toObject();
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const { sourceId, filePath, sourceType } = await req.json()
+    const userSupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: req.headers.get('Authorization')! } },
+    });
+    const { data: { user } } = await userSupabaseClient.auth.getUser();
 
-    if (!sourceId || !filePath || !sourceType) {
-      return new Response(
-        JSON.stringify({ error: 'sourceId, filePath, and sourceType are required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
-    console.log('Processing document:', { source_id: sourceId, file_path: filePath, source_type: sourceType });
-
-    // Get environment variables
-    const webhookUrl = Deno.env.get('DOCUMENT_PROCESSING_WEBHOOK_URL')
-    const authHeader = Deno.env.get('NOTEBOOK_GENERATION_AUTH')
-
-    if (!webhookUrl) {
-      console.error('Missing DOCUMENT_PROCESSING_WEBHOOK_URL environment variable')
-      
-      // Initialize Supabase client to update status
-      const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-      )
-
-      // Update source status to failed
-      await supabaseClient
-        .from('sources')
-        .update({ processing_status: 'failed' })
-        .eq('id', sourceId)
-
-      return new Response(
-        JSON.stringify({ error: 'Document processing webhook URL not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    const { publicUrl, documentType, notebookId } = await req.json();
+    if (!publicUrl || !documentType || !notebookId) {
+      return new Response(JSON.stringify({ error: 'publicUrl, documentType, and notebookId are required' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
-    console.log('Calling external webhook:', webhookUrl);
-
-    // Create the file URL for public access
-    const fileUrl = `${Deno.env.get('SUPABASE_URL')}/storage/v1/object/public/sources/${filePath}`
-
-    // Prepare the payload for the webhook with correct variable names
     const payload = {
-      source_id: sourceId,
-      file_url: fileUrl,
-      file_path: filePath,
-      source_type: sourceType,
-      callback_url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/process-document-callback`
-    }
+      id_conversa: user.id,
+      correlation_id: notebookId,
+      whatsapp: user.email,
+      tipo_documento: documentType,
+      url_documento: publicUrl,
+    };
 
-    console.log('Webhook payload:', payload);
+    console.log("Disparando webhook para o Make.com (sem esperar):", payload);
 
-    // Call external webhook with proper headers
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    }
-
-    if (authHeader) {
-      headers['Authorization'] = authHeader
-    }
-
-    const response = await fetch(webhookUrl, {
+    // ✨ MUDANÇA CRÍTICA: "Fire and Forget" ✨
+    // Nós iniciamos a chamada para o webhook, mas não usamos 'await'.
+    // Isso permite que nossa função responda imediatamente ao frontend.
+    fetch(DOCUMENT_PROCESSING_WEBHOOK_URL, {
       method: 'POST',
-      headers: headers,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
-    })
+    }).catch(err => {
+      // Adicionamos um .catch para logar qualquer erro que aconteça
+      // ao tentar *enviar* a requisição para o Make.com.
+      console.error("Erro ao disparar o webhook:", err);
+    });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Webhook call failed:', response.status, errorText);
-      
-      // Initialize Supabase client to update status
-      const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-      )
-
-      // Update source status to failed
-      await supabaseClient
-        .from('sources')
-        .update({ processing_status: 'failed' })
-        .eq('id', sourceId)
-
-      return new Response(
-        JSON.stringify({ error: 'Document processing failed', details: errorText }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    const result = await response.json()
-    console.log('Webhook response:', result);
-
-    return new Response(
-      JSON.stringify({ success: true, message: 'Document processing initiated', result }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    // Responde imediatamente ao frontend com sucesso.
+    return new Response(JSON.stringify({ success: true, message: 'Processamento do documento iniciado.' }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
 
   } catch (error) {
-    console.error('Error in process-document function:', error)
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    console.error('Erro na função process-document:', error.message);
+    return new Response(JSON.stringify({ error: 'Erro interno do servidor', details: error.message }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
   }
 })
+

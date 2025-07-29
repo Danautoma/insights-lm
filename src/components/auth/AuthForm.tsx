@@ -51,8 +51,8 @@ const AuthForm = () => {
       console.log('Sign in successful:', data.user?.email);
       
       toast({
-        title: "Welcome back!",
-        description: "You have successfully signed in.",
+        title: "Bem-vindo(a) de volta!",
+        description: "Você fez o login com sucesso.",
       });
 
       // The AuthContext will handle the redirect automatically
@@ -72,38 +72,38 @@ const AuthForm = () => {
   return (
     <Card className="w-full max-w-md mx-auto">
       <CardHeader>
-        <CardTitle>Sign In</CardTitle>
+        <CardTitle>Entrar</CardTitle>
         <CardDescription>
-          Enter your credentials to access your notebooks
+          Use suas credenciais para acessar seus dossiês
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">E-mail</Label>
             <Input
               id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              placeholder="Enter your email"
+              placeholder="Digite seu e-mail"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">Senha</Label>
             <Input
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              placeholder="Enter your password"
+              placeholder="Digite sua senha"
               minLength={6}
             />
           </div>
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? 'Signing In...' : 'Sign In'}
+            {loading ? 'Entrando...' : 'Entrar'}
           </Button>
         </form>
       </CardContent>

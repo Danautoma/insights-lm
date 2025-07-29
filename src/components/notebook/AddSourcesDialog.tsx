@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Upload, FileText, Link, Copy } from 'lucide-react';
+import { Upload, FileText, Link, Copy, Check } from 'lucide-react';
 import MultipleWebsiteUrlsDialog from './MultipleWebsiteUrlsDialog';
 import CopiedTextDialog from './CopiedTextDialog';
 import { useSources } from '@/hooks/useSources';
@@ -28,6 +28,7 @@ const AddSourcesDialog = ({
   const [isLocallyProcessing, setIsLocallyProcessing] = useState(false);
 
   const {
+    sources,
     addSourceAsync,
     updateSource,
     isAdding
@@ -35,7 +36,7 @@ const AddSourcesDialog = ({
 
   const {
     uploadFile,
-    isUploading
+    uploading: isUploading
   } = useFileUpload();
 
   const {
@@ -86,9 +87,9 @@ const AddSourcesDialog = ({
     }
   }, []);
 
-  const processFileAsync = async (file: File, sourceId: string, notebookId: string) => {
+  const processFileAsync = async (file: File, sourceId: string, notebookId: string, documentType?: string) => {
     try {
-      console.log('Starting file processing for:', file.name, 'source:', sourceId);
+      console.log('Starting file processing for:', file.name, 'source:', sourceId, 'notebook:', notebookId);
       const fileType = file.type.includes('pdf') ? 'pdf' : file.type.includes('audio') ? 'audio' : 'text';
 
       // Update status to uploading
@@ -100,11 +101,51 @@ const AddSourcesDialog = ({
       });
 
       // Upload the file
-      const filePath = await uploadFile(file, notebookId, sourceId);
+      console.log('Calling uploadFile with params:', { fileName: file.name, notebookId, sourceId, documentType });
+      const filePath = await uploadFile(file, notebookId, sourceId, documentType);
       if (!filePath) {
         throw new Error('File upload failed - no file path returned');
       }
       console.log('File uploaded successfully:', filePath);
+
+      // Manually increment sources_uploaded counter after successful upload
+      try {
+        console.log('Incrementing sources_uploaded counter for notebook:', notebookId);
+        
+        // 1. Buscar o valor atual da coluna sources_uploaded
+        const { data: currentNotebook, error: fetchError } = await supabase
+          .from('notebooks')
+          .select('sources_uploaded')
+          .eq('id', notebookId)
+          .single();
+        
+        if (fetchError) {
+          console.error('Erro ao buscar notebook atual:', fetchError);
+          throw fetchError;
+        }
+        
+        // 2. Somar +1 ao valor atual
+        const currentCount = currentNotebook?.sources_uploaded || 0;
+        const newCount = currentCount + 1;
+        
+        console.log('Atualizando contador:', { currentCount, newCount });
+        
+        // 3. Executar update na tabela notebooks
+        const { error: updateError } = await supabase
+          .from('notebooks')
+          .update({ sources_uploaded: newCount })
+          .eq('id', notebookId);
+        
+        if (updateError) {
+          console.error('Erro ao atualizar contador de arquivos:', updateError);
+          throw updateError;
+        }
+        
+        console.log('Contador de arquivos incrementado com sucesso:', newCount);
+      } catch (counterError) {
+        console.error('Falha ao incrementar contador de arquivos:', counterError);
+        // Não falha o upload se o contador falhar
+      }
 
       // Update with file path and set to processing
       updateSource({
@@ -115,20 +156,11 @@ const AddSourcesDialog = ({
         }
       });
 
-      // Start document processing
+      // O processamento agora é iniciado pelo webhook do Make.com
+      // A geração do conteúdo é feita pelo workflow customizado no n8n
       try {
-        await processDocumentAsync({
-          sourceId,
-          filePath,
-          sourceType: fileType
-        });
-
-        // Generate notebook content
-        await generateNotebookContentAsync({
-          notebookId,
-          filePath,
-          sourceType: fileType
-        });
+        await processDocumentAsync();
+        await generateNotebookContentAsync();
         console.log('Document processing completed for:', sourceId);
       } catch (processingError) {
         console.error('Document processing failed:', processingError);
@@ -279,6 +311,44 @@ const AddSourcesDialog = ({
         }
       });
 
+      // Increment sources_uploaded counter for text sources
+      try {
+        console.log('Incrementing sources_uploaded counter for text source in notebook:', notebookId);
+        
+        // 1. Buscar o valor atual da coluna sources_uploaded
+        const { data: currentNotebook, error: fetchError } = await supabase
+          .from('notebooks')
+          .select('sources_uploaded')
+          .eq('id', notebookId)
+          .single();
+        
+        if (fetchError) {
+          console.error('Erro ao buscar notebook atual para texto:', fetchError);
+          throw fetchError;
+        }
+        
+        // 2. Somar +1 ao valor atual
+        const currentCount = currentNotebook?.sources_uploaded || 0;
+        const newCount = currentCount + 1;
+        
+        console.log('Atualizando contador para texto:', { currentCount, newCount });
+        
+        // 3. Executar update na tabela notebooks
+        const { error: updateError } = await supabase
+          .from('notebooks')
+          .update({ sources_uploaded: newCount })
+          .eq('id', notebookId);
+        
+        if (updateError) {
+          console.error('Erro ao atualizar contador de arquivos para texto:', updateError);
+          throw updateError;
+        }
+        
+        console.log('Contador de arquivos incrementado com sucesso para texto:', newCount);
+      } catch (counterError) {
+        console.error('Falha ao incrementar contador de arquivos para texto:', counterError);
+      }
+
       // Send to webhook endpoint with source ID
       const { data, error } = await supabase.functions.invoke('process-additional-sources', {
         body: {
@@ -363,6 +433,44 @@ const AddSourcesDialog = ({
       // Combine all created sources
       const allCreatedSources = [firstSource, ...remainingSources];
 
+      // Increment sources_uploaded counter for each website
+      try {
+        console.log(`Incrementing sources_uploaded counter for ${urls.length} websites in notebook:`, notebookId);
+        
+        // 1. Buscar o valor atual da coluna sources_uploaded
+        const { data: currentNotebook, error: fetchError } = await supabase
+          .from('notebooks')
+          .select('sources_uploaded')
+          .eq('id', notebookId)
+          .single();
+        
+        if (fetchError) {
+          console.error('Erro ao buscar notebook atual para websites:', fetchError);
+          throw fetchError;
+        }
+        
+        // 2. Somar o número de websites ao valor atual
+        const currentCount = currentNotebook?.sources_uploaded || 0;
+        const newCount = currentCount + urls.length;
+        
+        console.log('Atualizando contador para websites:', { currentCount, websitesCount: urls.length, newCount });
+        
+        // 3. Executar update na tabela notebooks
+        const { error: updateError } = await supabase
+          .from('notebooks')
+          .update({ sources_uploaded: newCount })
+          .eq('id', notebookId);
+        
+        if (updateError) {
+          console.error('Erro ao atualizar contador de arquivos para websites:', updateError);
+          throw updateError;
+        }
+        
+        console.log('Contador de arquivos incrementado com sucesso para websites:', newCount);
+      } catch (counterError) {
+        console.error('Falha ao incrementar contador de arquivos para websites:', counterError);
+      }
+
       // Send to webhook endpoint with all source IDs
       const { data, error } = await supabase.functions.invoke('process-additional-sources', {
         body: {
@@ -396,8 +504,150 @@ const AddSourcesDialog = ({
     }
   };
 
+  // Function to handle document type upload
+  const handleDocumentTypeUpload = async (files: File[], documentType: string) => {
+    if (!notebookId) {
+      toast({
+        title: "Erro",
+        description: "Nenhum dossiê selecionado",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (files.length === 0) return;
+
+    setIsLocallyProcessing(true);
+
+    try {
+      const file = files[0]; // Only take the first file for document types
+      const fileType = file.type.includes('pdf') ? 'pdf' : file.type.includes('audio') ? 'audio' : 'text';
+      
+      const sourceData = {
+        notebookId,
+        title: file.name,
+        type: fileType as 'pdf' | 'text' | 'website' | 'youtube' | 'audio',
+        file_size: file.size,
+        processing_status: 'pending',
+        metadata: {
+          fileName: file.name,
+          fileType: file.type,
+          documentType: documentType
+        }
+      };
+      
+      console.log('Creating source for document type:', documentType, file.name);
+      const createdSource = await addSourceAsync(sourceData);
+
+      // Close dialog immediately
+      setIsLocallyProcessing(false);
+      onOpenChange(false);
+
+      // Show success toast
+      toast({
+        title: "Documento Adicionado",
+        description: `${documentType} adicionado com sucesso e processamento iniciado`
+      });
+
+      // Process file in background
+      processFileAsync(file, createdSource.id, notebookId, documentType).catch(error => {
+        console.error('File processing failed:', error);
+        toast({
+          title: "Erro no Processamento",
+          description: "Houve um problema ao processar o documento. Verifique a lista de documentos.",
+          variant: "destructive"
+        });
+      });
+    } catch (error) {
+      console.error('Error creating document source:', error);
+      setIsLocallyProcessing(false);
+      toast({
+        title: "Erro",
+        description: "Falha ao adicionar documento. Tente novamente.",
+        variant: "destructive"
+      });
+    }
+  };
+
   // Use local processing state instead of global processing states
   const isProcessingFiles = isLocallyProcessing;
+
+  // Component for document type upload
+  const DocumentTypeUpload = ({ 
+    type, 
+    title, 
+    description, 
+    icon, 
+    sources, 
+    onFileSelect, 
+    isProcessing 
+  }: {
+    type: string;
+    title: string;
+    description: string;
+    icon: string;
+    sources: any[];
+    onFileSelect: (files: File[]) => void;
+    isProcessing: boolean;
+  }) => {
+    const hasDocument = sources?.some(source => source.document_type === type);
+    
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files[0]) {
+        const files = Array.from(e.target.files);
+        onFileSelect(files);
+      }
+    };
+
+    return (
+      <div className={`border-2 border-dashed rounded-lg p-6 transition-colors ${
+        hasDocument 
+          ? 'border-green-300 bg-green-50' 
+          : isProcessing 
+            ? 'border-gray-300 bg-gray-50 opacity-50' 
+            : 'border-gray-300 hover:border-gray-400'
+      }`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div className="text-2xl">{icon}</div>
+            <div>
+              <h3 className="font-medium text-gray-900">{title}</h3>
+              <p className="text-sm text-gray-600">{description}</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            {hasDocument ? (
+              <div className="flex items-center space-x-2 text-green-600">
+                <Check className="h-5 w-5" />
+                <span className="text-sm font-medium">Enviado</span>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="file"
+                  accept=".pdf,.txt,.md"
+                  onChange={handleFileChange}
+                  disabled={isProcessing || hasDocument}
+                  className="hidden"
+                  id={`file-${type}`}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => document.getElementById(`file-${type}`)?.click()}
+                  disabled={isProcessing || hasDocument}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Enviar
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -418,62 +668,47 @@ const AddSourcesDialog = ({
 
           <div className="space-y-6">
             <div>
-              <h2 className="text-xl font-medium mb-2">Add sources</h2>
-              <p className="text-gray-600 text-sm mb-1">Sources let InsightsLM base its responses on the information that matters most to you.</p>
+              <h2 className="text-xl font-medium mb-2">Adicionar Documentos ao Dossiê</h2>
+              <p className="text-gray-600 text-sm mb-1">Envie os documentos específicos para análise jurídica.</p>
               <p className="text-gray-500 text-xs">
-                (Examples: marketing plans, course reading, research notes, meeting transcripts, sales documents, etc.)
+                Cada tipo de documento pode ser enviado apenas uma vez por dossiê.
               </p>
             </div>
 
-            {/* File Upload Area */}
-            <div 
-              className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
-                dragActive ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
-              } ${isProcessingFiles ? 'opacity-50 pointer-events-none' : ''}`}
-              onDragEnter={handleDrag}
-              onDragLeave={handleDrag}
-              onDragOver={handleDrag}
-              onDrop={handleDrop}
-            >
-              <div className="flex flex-col items-center space-y-4">
-                <div className="w-12 h-12 rounded-full flex items-center justify-center bg-slate-100">
-                  <Upload className="h-6 w-6 text-slate-600" />
-                </div>
-                <div>
-                  <h3 className="font-medium text-gray-900 mb-2">
-                    {isProcessingFiles ? 'Processing files...' : 'Upload sources'}
-                  </h3>
-                  <p className="text-gray-600 text-sm">
-                    {isProcessingFiles ? (
-                      'Please wait while we process your files'
-                    ) : (
-                      <>
-                        Drag & drop or{' '}
-                        <button 
-                          className="text-blue-600 hover:underline" 
-                          onClick={() => document.getElementById('file-upload')?.click()}
-                          disabled={isProcessingFiles}
-                        >
-                          choose file
-                        </button>{' '}
-                        to upload
-                      </>
-                    )}
-                  </p>
-                </div>
-                <p className="text-xs text-gray-500">
-                  Supported file types: PDF, txt, Markdown, Audio (e.g. mp3)
-                </p>
-                <input
-                  id="file-upload"
-                  type="file"
-                  multiple
-                  className="hidden"
-                  accept=".pdf,.txt,.md,.mp3,.wav,.m4a"
-                  onChange={handleFileSelect}
-                  disabled={isProcessingFiles}
-                />
-              </div>
+            {/* Document Type Upload Areas */}
+            <div className="space-y-4">
+              {/* Processo Judicial */}
+              <DocumentTypeUpload
+                type="processo"
+                title="Processo Judicial"
+                description="Documento principal do processo"
+                icon="⚖️"
+                sources={sources}
+                onFileSelect={(files) => handleDocumentTypeUpload(files, 'processo')}
+                isProcessing={isProcessingFiles}
+              />
+
+              {/* Edital */}
+              <DocumentTypeUpload
+                type="edital"
+                title="Edital"
+                description="Edital do concurso ou licitação"
+                icon="📋"
+                sources={sources}
+                onFileSelect={(files) => handleDocumentTypeUpload(files, 'edital')}
+                isProcessing={isProcessingFiles}
+              />
+
+              {/* Matrícula */}
+              <DocumentTypeUpload
+                type="matricula"
+                title="Matrícula"
+                description="Documento de matrícula ou inscrição"
+                icon="🎓"
+                sources={sources}
+                onFileSelect={(files) => handleDocumentTypeUpload(files, 'matricula')}
+                isProcessing={isProcessingFiles}
+              />
             </div>
 
             {/* Integration Options */}

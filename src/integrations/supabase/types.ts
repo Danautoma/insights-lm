@@ -9,6 +9,81 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      analysis_checklist: {
+        Row: {
+          category: string | null
+          created_at: string
+          id: string
+          order_index: number | null
+          question: string
+          topic_title: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          id?: string
+          order_index?: number | null
+          question: string
+          topic_title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          id?: string
+          order_index?: number | null
+          question?: string
+          topic_title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      analysis_results: {
+        Row: {
+          checklist_id: string
+          confidence_score: number | null
+          created_at: string
+          id: string
+          notebook_id: string
+          summary: string
+          updated_at: string
+        }
+        Insert: {
+          checklist_id: string
+          confidence_score?: number | null
+          created_at?: string
+          id?: string
+          notebook_id: string
+          summary: string
+          updated_at?: string
+        }
+        Update: {
+          checklist_id?: string
+          confidence_score?: number | null
+          created_at?: string
+          id?: string
+          notebook_id?: string
+          summary?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analysis_results_checklist_id_fkey"
+            columns: ["checklist_id"]
+            isOneToOne: false
+            referencedRelation: "analysis_checklist"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "analysis_results_notebook_id_fkey"
+            columns: ["notebook_id"]
+            isOneToOne: false
+            referencedRelation: "notebooks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
           content: string | null
@@ -60,6 +135,8 @@ export type Database = {
           generation_status: string | null
           icon: string | null
           id: string
+          sources_processed: number | null
+          sources_uploaded: number | null
           title: string
           updated_at: string
           user_id: string
@@ -75,6 +152,8 @@ export type Database = {
           generation_status?: string | null
           icon?: string | null
           id?: string
+          sources_processed?: number | null
+          sources_uploaded?: number | null
           title: string
           updated_at?: string
           user_id: string
@@ -90,6 +169,8 @@ export type Database = {
           generation_status?: string | null
           icon?: string | null
           id?: string
+          sources_processed?: number | null
+          sources_uploaded?: number | null
           title?: string
           updated_at?: string
           user_id?: string
@@ -278,6 +359,14 @@ export type Database = {
       hnswhandler: {
         Args: { "": unknown }
         Returns: unknown
+      }
+      increment_sources_processed: {
+        Args: { notebook_id_param: string }
+        Returns: void
+      }
+      increment_sources_uploaded: {
+        Args: { notebook_id_param: string }
+        Returns: void
       }
       ivfflat_bit_support: {
         Args: { "": unknown }

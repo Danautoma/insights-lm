@@ -41,25 +41,16 @@ export const useNotebookDelete = () => {
 
         console.log(`Found ${sources?.length || 0} sources to clean up`);
 
-        // Delete all files from storage for sources that have file_path
-        const filesToDelete = sources?.filter(source => source.file_path).map(source => source.file_path) || [];
+        // Note: Files are now stored in Backblaze B2, not Supabase Storage
+        // For now, we only delete the database records. File cleanup in Backblaze
+        // can be handled separately if needed (e.g., via lifecycle policies)
+        const filesInBackblaze = sources?.filter(source => source.file_path) || [];
         
-        if (filesToDelete.length > 0) {
-          console.log('Deleting files from storage:', filesToDelete);
-          
-          const { error: storageError } = await supabase.storage
-            .from('sources')
-            .remove(filesToDelete);
-
-          if (storageError) {
-            console.error('Error deleting files from storage:', storageError);
-            // Don't throw here - we still want to delete the notebook
-            // even if some files can't be deleted (they might already be gone)
-          } else {
-            console.log('All files deleted successfully from storage');
-          }
+        if (filesInBackblaze.length > 0) {
+          console.log(`Found ${filesInBackblaze.length} files stored in Backblaze B2`);
+          console.log('Database records will be deleted, file cleanup handled separately');
         } else {
-          console.log('No files to delete from storage (URL-based sources or no file_paths)');
+          console.log('No files to track (URL-based sources or text content)');
         }
 
         // Delete the notebook - this will cascade delete all sources

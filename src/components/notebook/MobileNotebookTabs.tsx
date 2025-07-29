@@ -63,6 +63,7 @@ const MobileNotebookTabs = ({
         <SourcesSidebar 
           hasSource={hasSource}
           notebookId={notebookId}
+          notebookTitle={notebook?.title}
           selectedCitation={selectedCitation}
           onCitationClose={onCitationClose}
           setSelectedCitation={setSelectedCitation}

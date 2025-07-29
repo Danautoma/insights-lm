@@ -6,8 +6,6 @@ import { useSources } from '@/hooks/useSources';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import NotebookHeader from '@/components/notebook/NotebookHeader';
 import SourcesSidebar from '@/components/notebook/SourcesSidebar';
-import ChatArea from '@/components/notebook/ChatArea';
-import StudioSidebar from '@/components/notebook/StudioSidebar';
 import MobileNotebookTabs from '@/components/notebook/MobileNotebookTabs';
 import { Citation } from '@/types/message';
 
@@ -30,58 +28,44 @@ const Notebook = () => {
     setSelectedCitation(null);
   };
 
-  // Dynamic width calculations for desktop - expand studio when editing notes
-  const sourcesWidth = isSourceDocumentOpen ? 'w-[35%]' : 'w-[25%]';
-  const studioWidth = 'w-[30%]'; // Expanded width for note editing
-  const chatWidth = isSourceDocumentOpen ? 'w-[35%]' : 'w-[45%]';
+  // Dynamic width calculations for desktop - 2 column layout
+  const sourcesWidth = isSourceDocumentOpen ? 'w-[35%]' : 'w-[30%]';
+  const chatWidth = isSourceDocumentOpen ? 'w-[65%]' : 'w-[70%]';
 
   return (
     <div className="h-screen bg-white flex flex-col overflow-hidden">
       <NotebookHeader 
-        title={notebook?.title || 'Untitled Notebook'} 
-        notebookId={notebookId} 
+        title={notebook?.title || 'Dossiê Sem Título'} 
+        notebookId={notebookId}
+        hasSource={hasSource}
       />
       
       {isDesktop ? (
-        // Desktop layout (3-column)
+        // Desktop layout - only sources sidebar
         <div className="flex-1 flex overflow-hidden">
-          <div className={`${sourcesWidth} flex-shrink-0`}>
+          <div className="w-full">
             <SourcesSidebar 
               hasSource={hasSource || false} 
               notebookId={notebookId}
+              notebookTitle={notebook?.title}
               selectedCitation={selectedCitation}
               onCitationClose={handleCitationClose}
               setSelectedCitation={setSelectedCitation}
             />
           </div>
-          
-          <div className={`${chatWidth} flex-shrink-0`}>
-            <ChatArea 
-              hasSource={hasSource || false} 
-              notebookId={notebookId}
-              notebook={notebook}
-              onCitationClick={handleCitationClick}
-            />
-          </div>
-          
-          <div className={`${studioWidth} flex-shrink-0`}>
-            <StudioSidebar 
-              notebookId={notebookId} 
-              onCitationClick={handleCitationClick}
-            />
-          </div>
         </div>
       ) : (
-        // Mobile/Tablet layout (tabs)
-        <MobileNotebookTabs
-          hasSource={hasSource || false}
-          notebookId={notebookId}
-          notebook={notebook}
-          selectedCitation={selectedCitation}
-          onCitationClose={handleCitationClose}
-          setSelectedCitation={setSelectedCitation}
-          onCitationClick={handleCitationClick}
-        />
+        // Mobile/Tablet layout - only sources
+        <div className="flex-1 overflow-hidden">
+          <SourcesSidebar 
+            hasSource={hasSource || false} 
+            notebookId={notebookId}
+            notebookTitle={notebook?.title}
+            selectedCitation={selectedCitation}
+            onCitationClose={handleCitationClose}
+            setSelectedCitation={setSelectedCitation}
+          />
+        </div>
       )}
     </div>
   );

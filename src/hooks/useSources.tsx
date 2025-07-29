@@ -109,10 +109,14 @@ export const useSources = (notebookId?: string) => {
     }) => {
       if (!user) throw new Error('User not authenticated');
 
+      // Extract document_type from metadata if available
+      const documentType = sourceData.metadata?.documentType;
+
       const { data, error } = await supabase
         .from('sources')
         .insert({
           notebook_id: sourceData.notebookId,
+          user_id: user.id,
           title: sourceData.title,
           type: sourceData.type,
           content: sourceData.content,
@@ -120,6 +124,7 @@ export const useSources = (notebookId?: string) => {
           file_path: sourceData.file_path,
           file_size: sourceData.file_size,
           processing_status: sourceData.processing_status,
+          document_type: documentType,
           metadata: sourceData.metadata || {},
         })
         .select()

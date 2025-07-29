@@ -28,23 +28,14 @@ export const useSourceDelete = () => {
 
         console.log('Found source to delete:', source.title, 'with file_path:', source.file_path);
 
-        // Delete the file from storage if it exists
+        // Note: Files are now stored in Backblaze B2, not Supabase Storage
+        // For now, we only delete the database record. File cleanup in Backblaze
+        // can be handled separately if needed (e.g., via lifecycle policies)
         if (source.file_path) {
-          console.log('Deleting file from storage:', source.file_path);
-          
-          const { error: storageError } = await supabase.storage
-            .from('sources')
-            .remove([source.file_path]);
-
-          if (storageError) {
-            console.error('Error deleting file from storage:', storageError);
-            // Don't throw here - we still want to delete the database record
-            // even if the file deletion fails (file might already be gone)
-          } else {
-            console.log('File deleted successfully from storage');
-          }
+          console.log('File stored in Backblaze B2:', source.file_path);
+          console.log('Database record will be deleted, file cleanup handled separately');
         } else {
-          console.log('No file to delete from storage (URL-based source or no file_path)');
+          console.log('No file path (URL-based source or text content)');
         }
 
         // Delete the source record from the database

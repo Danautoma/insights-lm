@@ -140,6 +140,7 @@ export const useNotebooks = () => {
     error: error?.message || null,
     isError,
     createNotebook: createNotebook.mutate,
+    createNotebookAsync: createNotebook.mutateAsync,
     isCreating: createNotebook.isPending,
   };
 };

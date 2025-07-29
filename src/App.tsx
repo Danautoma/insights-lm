@@ -8,6 +8,9 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import Notebook from "./pages/Notebook";
+import AnalisePage from "./pages/AnalisePage";
+import HistoricoPage from "./pages/HistoricoPage";
+import PerfilPage from "./pages/PerfilPage";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -37,6 +40,38 @@ const AppContent = () => {
         element={
           <ProtectedRoute fallback={<Auth />}>
             <Notebook />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/dossie/:id" 
+        element={
+          <ProtectedRoute fallback={<Auth />}>
+            <Notebook />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/analise/:id" 
+        element={
+          <ProtectedRoute fallback={<Auth />}>
+            <AnalisePage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/historico" 
+        element={
+          <ProtectedRoute fallback={<Auth />}>
+            <HistoricoPage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/perfil" 
+        element={
+          <ProtectedRoute fallback={<Auth />}>
+            <PerfilPage />
           </ProtectedRoute>
         } 
       />

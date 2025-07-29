@@ -1,9 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { User, LogOut } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useNotebookUpdate } from '@/hooks/useNotebookUpdate';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,104 +9,96 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useLogout } from '@/services/authService';
+import { useProfile } from '@/hooks/useProfile';
 import Logo from '@/components/ui/Logo';
 
 interface NotebookHeaderProps {
   title: string;
   notebookId?: string;
+  hasSource?: boolean;
 }
 
-const NotebookHeader = ({ title, notebookId }: NotebookHeaderProps) => {
+const NotebookHeader = ({ title, notebookId, hasSource }: NotebookHeaderProps) => {
   const navigate = useNavigate();
   const { logout } = useLogout();
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedTitle, setEditedTitle] = useState(title);
-  const { updateNotebook, isUpdating } = useNotebookUpdate();
-
-  const handleTitleClick = () => {
-    if (notebookId) {
-      setIsEditing(true);
-      setEditedTitle(title);
-    }
-  };
-
-  const handleTitleSubmit = () => {
-    if (notebookId && editedTitle.trim() && editedTitle !== title) {
-      updateNotebook({
-        id: notebookId,
-        updates: { title: editedTitle.trim() }
-      });
-    }
-    setIsEditing(false);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleTitleSubmit();
-    } else if (e.key === 'Escape') {
-      setEditedTitle(title);
-      setIsEditing(false);
-    }
-  };
-
-  const handleBlur = () => {
-    handleTitleSubmit();
-  };
+  const { profile } = useProfile();
 
   const handleIconClick = () => {
     navigate('/');
   };
 
+  const handleVerAnaliseClick = () => {
+    if (notebookId) {
+      navigate(`/analise/${notebookId}`);
+    }
+  };
+
+  const getInitials = (fullName: string | null) => {
+    if (!fullName) return 'U';
+    return fullName
+      .split(' ')
+      .map(name => name.charAt(0))
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  const renderAvatar = () => {
+    if (profile?.avatar_url) {
+      return (
+        <img 
+          src={profile.avatar_url} 
+          alt={profile.full_name || 'Avatar'} 
+          className="w-8 h-8 rounded-full object-cover cursor-pointer"
+        />
+      );
+    }
+
+    return (
+      <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity">
+        <span className="text-white text-sm font-medium">
+          {getInitials(profile?.full_name)}
+        </span>
+      </div>
+    );
+  };
+
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4">
       <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <button 
-              onClick={handleIconClick}
-              className="hover:bg-gray-50 rounded transition-colors p-1"
-            >
-              <Logo />
-            </button>
-            {isEditing ? (
-              <Input
-                value={editedTitle}
-                onChange={(e) => setEditedTitle(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onBlur={handleBlur}
-                className="text-lg font-medium text-gray-900 border-none shadow-none p-0 h-auto focus-visible:ring-0 min-w-[300px] w-auto"
-                autoFocus
-                disabled={isUpdating}
-              />
-            ) : (
-              <span 
-                className="text-lg font-medium text-gray-900 cursor-pointer hover:bg-gray-50 rounded px-2 py-1 transition-colors"
-                onClick={handleTitleClick}
-              >
-                {title}
-              </span>
-            )}
-          </div>
+        <div className="flex items-center space-x-2">
+          <button 
+            onClick={handleIconClick}
+            className="hover:bg-gray-50 rounded transition-colors p-1"
+          >
+            <Logo />
+          </button>
+          <h1 className="text-xl font-medium text-foreground">Dossiê AI</h1>
         </div>
         
         <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="p-0">
-                  <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center cursor-pointer hover:bg-purple-600 transition-colors">
-                    <User className="h-4 w-4 text-white" />
-                  </div>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={logout} className="cursor-pointer">
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Sign Out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+          {hasSource && (
+            <Button 
+              onClick={handleVerAnaliseClick}
+              variant="default"
+              size="sm"
+            >
+              Ver Análise
+            </Button>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="p-0">
+                {renderAvatar()}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={logout} className="cursor-pointer">
+                <LogOut className="h-4 w-4 mr-2" />
+                Sair
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </header>

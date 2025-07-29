@@ -13,8 +13,8 @@ export const useLogout = () => {
       await signOut();
       
       toast({
-        title: "Signed out",
-        description: "You have been successfully signed out."
+        title: "Saída realizada",
+        description: "Você saiu com sucesso."
       });
       
       // Redirect to auth page
@@ -25,8 +25,8 @@ export const useLogout = () => {
       
       // Even if there's an error, redirect to auth page
       toast({
-        title: "Signed out",
-        description: "You have been signed out locally.",
+        title: "Saída realizada",
+        description: "Você foi desconectado localmente.",
         variant: "default"
       });
       

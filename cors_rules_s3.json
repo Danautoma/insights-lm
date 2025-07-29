@@ -1,0 +1,16 @@
+[
+  {
+    "corsRuleName": "s3-upload-rule",
+    "allowedOrigins": [
+      "http://localhost:8080"
+    ],
+    "allowedHeaders": [
+      "content-type"
+    ],
+    "allowedOperations": [
+      "s3_put"
+    ],
+    "exposeHeaders": [],
+    "maxAgeSeconds": 3600
+  }
+]

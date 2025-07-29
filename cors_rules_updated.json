@@ -1,0 +1,19 @@
+[
+  {
+    "corsRuleName": "dossie-ai-upload-rule",
+    "allowedOrigins": [
+      "http://localhost:8080"
+    ],
+    "allowedHeaders": [
+      "authorization",
+      "content-type",
+      "x-bz-file-name",
+      "x-bz-content-sha1"
+    ],
+    "allowedOperations": [
+      "b2_upload_file"
+    ],
+    "exposeHeaders": [],
+    "maxAgeSeconds": 3600
+  }
+]

@@ -1,5 +1,6 @@
+// /supabase/functions/generate-notebook-content/index.ts
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
@@ -7,185 +8,122 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// --- 1. Verificação de Segredos ---
+const {
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY,
+  SERVICE_ROLE_KEY, // Chave de admin com nome corrigido
+  NOTEBOOK_GENERATION_URL, // URL do seu serviço/webhook
+  NOTEBOOK_GENERATION_AUTH, // Token de autenticação para o serviço
+} = Deno.env.toObject();
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SERVICE_ROLE_KEY || !NOTEBOOK_GENERATION_URL || !NOTEBOOK_GENERATION_AUTH) {
+  console.error("ERRO CRÍTICO: Uma ou mais variáveis de ambiente faltando em generate-notebook-content.");
+}
+
 serve(async (req) => {
+  // Responde imediatamente à requisição de pre-voo (preflight)
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const { notebookId, filePath, sourceType } = await req.json()
+    // --- 2. Autenticação do Usuário ---
+    // Garante que apenas usuários logados podem chamar esta função
+    const userSupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: req.headers.get('Authorization')! } },
+    });
+    const { data: { user } } = await userSupabaseClient.auth.getUser();
+
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // --- 3. Início da sua Lógica de Negócio ---
+    const { notebookId, filePath, sourceType } = await req.json();
 
     if (!notebookId || !sourceType) {
-      return new Response(
-        JSON.stringify({ error: 'notebookId and sourceType are required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      return new Response(JSON.stringify({ error: 'notebookId e sourceType são obrigatórios' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
-    console.log('Processing request:', { notebookId, filePath, sourceType });
+    // Cliente Admin para realizar tarefas com privilégios elevados
+    const adminSupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-    // Get environment variables
-    const webServiceUrl = Deno.env.get('NOTEBOOK_GENERATION_URL')
-    const authHeader = Deno.env.get('NOTEBOOK_GENERATION_AUTH')
-
-    if (!webServiceUrl || !authHeader) {
-      console.error('Missing environment variables:', {
-        hasUrl: !!webServiceUrl,
-        hasAuth: !!authHeader
-      })
-      
-      return new Response(
-        JSON.stringify({ error: 'Web service configuration missing' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // Initialize Supabase client
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
-
-    // Update notebook status to 'generating'
-    await supabaseClient
+    // Atualiza o status do notebook para 'generating'
+    await adminSupabaseClient
       .from('notebooks')
       .update({ generation_status: 'generating' })
-      .eq('id', notebookId)
+      .eq('id', notebookId);
 
-    console.log('Calling external web service...')
-
-    // Prepare payload based on source type
-    let payload: any = {
-      sourceType: sourceType
+    // Prepara o payload para o serviço externo
+    const payload = {
+      sourceType: sourceType,
+      filePath: filePath, // filePath pode ser a URL do R2 ou null
     };
 
-    if (filePath) {
-      // For file sources (PDF, audio) or URLs (website, YouTube)
-      payload.filePath = filePath;
-    } else {
-      // For text sources, we need to get the content from the database
-      const { data: source } = await supabaseClient
-        .from('sources')
-        .select('content')
-        .eq('notebook_id', notebookId)
-        .single();
-      
-      if (source?.content) {
-        payload.content = source.content.substring(0, 5000); // Limit content size
-      }
-    }
-
-    console.log('Sending payload to web service:', payload);
-
-    // Call external web service
-    const response = await fetch(webServiceUrl, {
+    // Chama o serviço web externo (seu n8n, etc.)
+    const response = await fetch(NOTEBOOK_GENERATION_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': authHeader,
+        'Authorization': NOTEBOOK_GENERATION_AUTH,
       },
       body: JSON.stringify(payload)
-    })
+    });
 
     if (!response.ok) {
-      console.error('Web service error:', response.status, response.statusText)
       const errorText = await response.text();
-      console.error('Error response:', errorText);
-      
-      // Update status to failed
-      await supabaseClient
-        .from('notebooks')
-        .update({ generation_status: 'failed' })
-        .eq('id', notebookId)
-
-      return new Response(
-        JSON.stringify({ error: 'Failed to generate content from web service' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      console.error('Erro no serviço web:', response.status, errorText);
+      await adminSupabaseClient.from('notebooks').update({ generation_status: 'failed' }).eq('id', notebookId);
+      return new Response(JSON.stringify({ error: 'Falha ao gerar conteúdo do serviço web' }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
-    const generatedData = await response.json()
-    console.log('Generated data:', generatedData)
+    const generatedData = await response.json();
 
-    // Parse the response format: object with output property
-    let title, description, notebookIcon, backgroundColor, exampleQuestions;
-    
-    if (generatedData && generatedData.output) {
-      const output = generatedData.output;
-      title = output.title;
-      description = output.summary;
-      notebookIcon = output.notebook_icon;
-      backgroundColor = output.background_color;
-      exampleQuestions = output.example_questions || [];
-    } else {
-      console.error('Unexpected response format:', generatedData)
-      
-      await supabaseClient
-        .from('notebooks')
-        .update({ generation_status: 'failed' })
-        .eq('id', notebookId)
-
-      return new Response(
-        JSON.stringify({ error: 'Invalid response format from web service' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    // Processa a resposta do serviço
+    const output = generatedData?.output;
+    if (!output || !output.title) {
+      console.error('Formato de resposta inesperado do serviço web:', generatedData);
+      await adminSupabaseClient.from('notebooks').update({ generation_status: 'failed' }).eq('id', notebookId);
+      return new Response(JSON.stringify({ error: 'Resposta inválida do serviço web' }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
-    if (!title) {
-      console.error('No title returned from web service')
-      
-      await supabaseClient
-        .from('notebooks')
-        .update({ generation_status: 'failed' })
-        .eq('id', notebookId)
-
-      return new Response(
-        JSON.stringify({ error: 'No title in response from web service' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // Update notebook with generated content including icon, color, and example questions
-    const { error: notebookError } = await supabaseClient
+    // Atualiza o notebook com os dados gerados
+    const { error: notebookError } = await adminSupabaseClient
       .from('notebooks')
       .update({
-        title: title,
-        description: description || null,
-        icon: notebookIcon || '📝',
-        color: backgroundColor || 'bg-gray-100',
-        example_questions: exampleQuestions || [],
+        title: output.title,
+        description: output.summary || null,
+        icon: output.notebook_icon || '📝',
+        color: output.background_color || 'bg-gray-100',
+        example_questions: output.example_questions || [],
         generation_status: 'completed'
       })
-      .eq('id', notebookId)
+      .eq('id', notebookId);
 
     if (notebookError) {
-      console.error('Notebook update error:', notebookError)
-      return new Response(
-        JSON.stringify({ error: 'Failed to update notebook' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      console.error('Erro ao atualizar o notebook:', notebookError);
+      return new Response(JSON.stringify({ error: 'Falha ao atualizar o notebook' }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
-    console.log('Successfully updated notebook with example questions:', exampleQuestions)
-
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        title, 
-        description,
-        icon: notebookIcon,
-        color: backgroundColor,
-        exampleQuestions,
-        message: 'Notebook content generated successfully' 
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return new Response(JSON.stringify({ success: true, ...output }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
 
   } catch (error) {
-    console.error('Edge function error:', error)
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    console.error('Erro na função generate-notebook-content:', error.message);
+    return new Response(JSON.stringify({ error: 'Erro interno do servidor', details: error.message }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
   }
 })
